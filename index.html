@@ -1,0 +1,1136 @@
+<!DOCTYPE html> 
+<html lang="en"> 
+    <head> 
+        <title>BÚSQUEDA DE POLLITOS</title>
+        <!-- Se conecta el archivo de estilos CSS -->
+        <link rel="stylesheet" href="css/estilos.css">
+    </head>
+    <body>
+        <!-- Contenedor que muestra el menú con instrucciones -->
+        <div id="pantallaInicio">
+            <h1>BÚSQUEDA DE POLLITOS</h1>
+            <p>
+                W → moverte hacia adelante<br>
+                S → moverte hacia atrás<br>
+                A → moverte hacia la izquierda<br>
+                D → moverte hacia la derecha<br><br>
+                Evita a los zorros 🦊 y el tractor 🚜<br>
+                ¡Recoge tantos pollitos como puedas! 🐤
+            </p>
+            <p style="font-size:25px;">Presiona ESPACIO para comenzar</p>
+        </div>
+    
+        <canvas id="myCanvas"></canvas>
+        <!-- Contenedor de puntos y salud-->
+        <div id="interfaz">
+            <div id="miDivdis">puntos: <span id="puntos" style="opacity:1;" str></span></div>
+            <div id="miDivalt">salud: <span id="salud" style="opacity:1;"></span></div>
+            <div id="miDivtime">tiempo: <span id="tiempo" style="opacity:1;"></span></div>
+            
+            <!-- Contenedor de mensajes emergentes y boton de reinicio -->
+            <div id="miDiv"
+                style="
+                position:fixed;
+                top:50%;
+                left:50%;
+                transform:translate(-50%,-50%);
+                display:flex;
+                flex-direction:column;
+                justify-content:center;
+                align-items:center;
+                text-align:center;
+                pointer-events:none;
+                z-index:999;
+                ">
+            
+                <button id="botonReiniciar"
+                    style="
+                    width:400px;
+                    height:60px;
+                    background-color:black;
+                    color:white;
+                    border:none;
+                    font-size:30px;
+                    font-family:Arial;
+                    opacity:0;
+                    cursor:pointer;
+                    pointer-events:auto;
+                    display:block;
+                    margin:auto;
+                    "
+                    onclick="location.reload()">
+                    REINICIAR
+                    </button>
+
+                <span id="avisoo"
+                    style="
+                    display:block;
+                    font-size:90px;
+                    font-family:Arial;
+                    color:red;
+                    text-shadow:4px 4px 10px black;
+                    line-height:1.1;
+                    margin-bottom:25px;
+                    text-align:center;
+                    max-width:1200px;
+                    ">
+
+            </div>
+
+            <script type="importmap"> 
+                {
+                    "imports":{
+                        "three": "./js/three.module.js",
+                        "three/OrbitControls": "./js/OrbitControls.js" 
+                    }
+            }
+            </script>
+
+            <script type="module"> 
+                import * as THREE from 'three'; 
+                import {OrbitControls} from 'three/OrbitControls';
+                // import del modelo .glb (el mapa)
+                import {GLTFLoader} from './js/GLTFLoader.js';
+                // libreria de las fisicas
+                import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@latest/dist/cannon-es.js';
+                // el debug de las cajas fisicas
+                import CannonDebugger from './js/cannon-es-debugger.js'
+                console.log(OrbitControls);
+
+                // importación de los Modelos
+                import Arbol from "./assets/arbol.js";
+                import POLLITO from "./assets/pollito.js";
+                import ZORRITO from "./assets/zorrito.js";
+                import Granero from "./assets/granero.js"
+                import Pozo from "./assets/pozo.js";
+                import Tractor from "./assets/tractor.js";
+                import Bote from "./assets/bote.js";
+                import gallina from "./assets/gallina.js";
+
+                //🕹️🕹️ Renderer - Realiza una conexión entre el código y el canvas
+                var renderer = new THREE.WebGLRenderer({
+                canvas: document.getElementById('myCanvas'), antialias: true,
+                });
+                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setClearColor(0x57CFF7);
+
+                // 🎬 Creando nueva escena - Es el espacio donde se colocan los objetos
+                var scene = new THREE.Scene();
+
+                //🎥🎥 Agregar una cámara de perspectiva
+                var camera = new THREE.PerspectiveCamera(70,window.innerWidth / window.innerHeight,0.1,2000
+                );
+                scene.add(camera);
+
+                const sizes = {
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                };
+                const canvas = document.getElementById('myCanvas');
+
+                window.addEventListener('resize', () => {
+                
+                    sizes.width = window.innerWidth;
+                    sizes.height = window.innerHeight;
+
+                    camera.aspect = sizes.width / sizes.height;
+                    camera.updateProjectionMatrix();
+
+                    renderer.setSize(sizes.width, sizes.height);
+                });
+
+                //Settings de la cámara
+                camera.position.set(0, 15, 50);
+
+                //FONDO DEL CIELO
+                var loader = new THREE.TextureLoader();
+                var texCielo = loader.load("./assets/cielo.jpg");
+
+                var fondo = new THREE.BoxGeometry(1800, 500, 1);
+                var textParedes = new THREE.MeshLambertMaterial({ map: texCielo, side: THREE.DoubleSide });
+                var meshCielo = new THREE.Mesh(fondo, textParedes);
+                scene.add(meshCielo);
+                meshCielo.position.set(0, 240, -330);
+
+                //MAS PISO JAJA
+                var maspiso = new THREE.BoxGeometry(1800, 1, 1000);
+                var textPiso = new THREE.MeshLambertMaterial({ color: 0x051303, side: THREE.DoubleSide }); 
+                var meshPiso = new THREE.Mesh(maspiso, textPiso);
+                scene.add(meshPiso);
+
+                // ---------------- FÍSICAS ----------------
+                //ADICION DEL "WORLD" (LAS FISICAS)
+                const world = new CANNON.World();
+                // Tipo de cálculo de colisiones
+                world.broadphase = new CANNON.SAPBroadphase(world);
+                // Gravedad
+                world.gravity.set(0, -9.82, 0);
+                // Fricción del mundo
+                world.defaultContactMaterial.friction=0;
+
+                // Material del suelo
+                const groundMaterial = new CANNON.Material("groundMaterial"); 
+                // Material de ruedas
+                const wheelMaterial = new CANNON.Material("wheelMaterial");
+                // Configuración de contacto entre materiales
+                const wheelGroundMaterial = new CANNON.ContactMaterial( wheelMaterial, groundMaterial,{
+                friction:0.3,
+                restitution:0,
+                contactEquationStiffness:1000
+                });
+                world.addContactMaterial(wheelGroundMaterial); 
+                const cannonDebug = new CannonDebugger(scene, world); 
+
+                const groundBody = new CANNON.Body({ 
+                type: CANNON.Body.STATIC, 
+                shape: new CANNON.Plane(), 
+                });
+                // Se rota para que quede horizontal
+                groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); 
+                groundBody.position.y=0; 
+                world.addBody(groundBody);
+
+                // Añadiendo los OrbitControls
+                var controls = new OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                
+                //GUIAS
+                var gridHelper = new THREE.GridHelper(50,50);
+                //scene.add (gridHelper);
+
+                var axesHelper = new THREE.AxesHelper(500);
+                //scene.add (axesHelper);
+
+                // Espacio para colocar los objetos
+
+                //LUCES
+                var light= new THREE.AmbientLight(0xffffff,1.1);
+                scene.add(light); 
+
+                // --- AUDIO EN LA ESCENA ---
+
+                var listener = new THREE.AudioListener();
+                camera.add(listener);
+
+                var sound = new THREE.Audio(listener);
+
+                var audioLoader = new THREE.AudioLoader();
+                audioLoader.load('music/farm.mp3', function(buffer) {
+
+                    sound.setBuffer(buffer);
+                    sound.setLoop(true);
+                    sound.setVolume(0.5);
+
+                });
+
+                window.addEventListener("click", iniciarMusica);
+                function iniciarMusica() {
+                    if (listener.context.state === 'suspended') {
+                        listener.context.resume();
+                    }
+                    if (!sound.isPlaying) {
+                        sound.play();
+                    }
+                }
+
+                //--- SONIDO DEL POLLO CUANDO ES RECOLECTADO---
+
+                var listener = new THREE.AudioListener();
+                camera.add(listener);
+
+                var sound = new THREE.Audio(listener);
+
+                var audioLoader = new THREE.AudioLoader();
+                audioLoader.load('music/chicken.mp3', function(buffer) {
+
+                    sound.setBuffer(buffer);
+                    sound.setVolume(1);
+
+                });
+
+                function sonidopollo() {
+
+                    if (!sound.buffer) return;
+
+                    sound.play();
+
+                }
+
+
+                //GALLINA
+                // ---------------- GALLINA ----------------
+
+                //cuerpo
+                var geometry1= new THREE.BoxGeometry(4,4,5.5);
+                var material1=new THREE.MeshLambertMaterial({color:0xFFFFFF,side:THREE.DoubleSide});
+                var mesh1=new THREE.Mesh(geometry1,material1);
+                mesh1.position.set(0,4.5,0);
+                
+                //patas
+                var geometry2= new THREE.BoxGeometry(1,4,1);
+                var material3=new THREE.MeshLambertMaterial({color:0xED891F,side:THREE.DoubleSide});
+                var mesh2=new THREE.Mesh(geometry2,material3);
+                mesh2.position.set(1,3,0);
+                
+                var geometry3= new THREE.BoxGeometry(1,4,1);
+                var mesh3=new THREE.Mesh(geometry3,material3);
+                mesh3.position.set(-1,3,0);
+
+                var geometry7= new THREE.BoxGeometry(1.7,.7,2);
+                var mesh7=new THREE.Mesh(geometry7,material3);
+                mesh7.position.set(1,1,0.5);
+
+                var geometry7= new THREE.BoxGeometry(1.7,.7,2);
+                var mesh8=new THREE.Mesh(geometry7,material3);
+                mesh8.position.set(-1,1,0.5)
+
+                ///manos
+                var geometry4= new THREE.BoxGeometry(1,3,4);
+                var mesh4=new THREE.Mesh(geometry4,material1);
+                mesh4.position.set(-2.5,4.9,0);
+                
+                var geometry5= new THREE.BoxGeometry(1,3,4);
+                var mesh5=new THREE.Mesh(geometry5,material1);
+                mesh5.position.set(2.5,4.9,0);
+
+                //cabeza
+                var geometry6= new THREE.BoxGeometry(2.5,3.8,2);
+                var mesh6=new THREE.Mesh(geometry6,material1);
+                mesh6.position.set(0,7,2.5);
+
+                //pico 
+                var geometry8= new THREE.BoxGeometry(2.5,1,1);
+                var mesh9=new THREE.Mesh(geometry8,material3);
+                mesh9.position.set(0,7.3,4);
+
+                var geometry9= new THREE.BoxGeometry(1.5,1,0.7);
+                var material2=new THREE.MeshLambertMaterial({color:0xCC0C0C,side:THREE.DoubleSide});
+                var mesh10=new THREE.Mesh(geometry9,material2);
+                mesh10.position.set(0,6.5,3.7);
+
+                //ojos
+                var geometry10= new THREE.BoxGeometry(.5,.5,0.5);
+                var material4=new THREE.MeshLambertMaterial({color:0x000000,side:THREE.DoubleSide});
+                var mesh11=new THREE.Mesh(geometry10,material4);
+                mesh11.position.set(0.8,8.2,3.5);
+                var mesh12=new THREE.Mesh(geometry10,material4);
+                mesh12.position.set(-0.8,8.2,3.5);
+
+                //cresta
+                var geometry11= new THREE.BoxGeometry(.5,.5,1);
+                var material4=new THREE.MeshLambertMaterial({color:0x000000,side:THREE.DoubleSide});
+                var mesh13=new THREE.Mesh(geometry11,material2);
+                mesh13.position.set(0.2,9,2);
+
+                var mesh14=new THREE.Mesh(geometry11,material2);
+                mesh14.position.set(-0.3,9,2);
+
+                var mesh15=new THREE.Mesh(geometry11,material2);
+                mesh15.position.set(0,9.5,2);
+
+                // GRUPO PIERNA IZQUIERDA
+                const piernaIzq = new THREE.Group();
+                piernaIzq.position.set(mesh2.position.x, mesh2.position.y + 2, mesh2.position.z);
+
+                // el pivote se coloca arriba para que rote como pierna
+                mesh2.position.set(0, -2, 0);
+                mesh7.position.set(0, -4, 0.5);
+                piernaIzq.add(mesh2);
+                piernaIzq.add(mesh7);
+
+                // GRUPO PIERNA DERECHA
+                const piernaDer = new THREE.Group();
+
+                piernaDer.position.set(mesh3.position.x, mesh3.position.y + 2, mesh3.position.z);
+                mesh3.position.set(0, -2, 0);
+                mesh8.position.set(0, -4, 0.5);
+                piernaDer.add(mesh3); 
+                piernaDer.add(mesh8); 
+
+                ///////  GRUPOS DE TODA LA GALLINA
+                //Grupo de patas 
+                const gr2 = new THREE.Group();
+                gr2.add(piernaIzq, piernaDer);
+                //grupo de gallina comleta
+                const gr0=new THREE.Group();
+                gr0.add(mesh1,mesh4,mesh5,mesh6,mesh9,mesh10,mesh11,mesh12,mesh13,mesh14,mesh15,gr2);
+                gr0.position.y=-5;
+                const gr1=new THREE.Group();
+                gr1.add(gr0);
+                scene.add(gr1);
+
+                ////////// FÍSICAS DE GALLINA (CAJA INVISIBLE) 
+
+                const gr1shape = new CANNON.Box(new CANNON.Vec3(3.2,5,5));
+
+                const gr1Body = new CANNON.Body({
+                    mass: 1,
+                    material: groundMaterial,
+                    position: new CANNON.Vec3(0,5,0),
+                    shape: gr1shape
+                });
+                gr1Body.quaternion.setFromEuler(0, Math.PI, 0);
+                gr1.position.copy(gr1Body.position);
+                world.addBody(gr1Body);
+
+                ////////MOVIMIENTO DE LA GALLINA
+
+                const moveSpeed= 50;
+                var rotar= 5;
+                const keys={};
+
+                // eventos al presionar teclas
+                window.addEventListener('keydown',(event)=>{
+                    keys[event.code]=true;
+                });
+                // eventos al soltar teclas
+                window.addEventListener('keydown', (event)=>{
+
+                    if(event.code === "Space" && !juegoIniciado){
+                        juegoIniciado = true;
+                        document.getElementById("pantallaInicio").style.display = "none";
+                    }
+
+                });
+
+                window.addEventListener('keyup',(Sevent)=>{
+                    keys[event.code]=false;
+                });
+
+                const acelerar=5;
+                const desacelerar=2;
+                let currentSpeed= 0;
+
+                let puedeSaltar = false;
+                const saltoF = 10;
+
+                gr1Body.addEventListener('collide', (event) => {
+                const contact = event.contact;
+                if (!contact || !contact.ni) return;
+
+                let normal = contact.ni;
+
+                if (contact.bi.id === gr1Body.id) {
+                    normal = normal.scale(-1);
+                }
+
+                if (normal.y > 0.5) {
+                    puedeSaltar = true;
+                }
+                });
+
+                /////// CONTROLES DE GALLINA
+
+                var reloj = new THREE.Clock();
+                var velocidad=3;
+                var amplitud=5;
+                var posis=3;
+
+                function animate(){
+                    // dirección hacia adelante de la gallina
+                    const forward = new THREE.Vector3(0,0,1);
+                    gr1.getWorldDirection(forward);
+                    forward.normalize();
+                    // avanzar
+                    if(keys['KeyW']){
+                        currentSpeed = Math.min(currentSpeed + acelerar, moveSpeed);
+                        // animación de patas
+                        piernaIzq.rotation.x = Math.cos(reloj.getElapsedTime()*(velocidad*5));
+                        piernaDer.rotation.x = -Math.cos(reloj.getElapsedTime()*(velocidad*5));
+                        // animación alas
+                        mesh4.rotation.x=(Math.cos(reloj.getElapsedTime()*(velocidad*5))*1);
+                        mesh5.rotation.x=(Math.cos(reloj.getElapsedTime()*(velocidad*5))*1);
+                    }
+                    // retroceder
+                    else if(keys['KeyS']){
+                        currentSpeed = Math.max(currentSpeed - acelerar, -moveSpeed);
+
+                        piernaIzq.rotation.x = Math.cos(reloj.getElapsedTime()*(velocidad*5));
+                        piernaDer.rotation.x = -Math.cos(reloj.getElapsedTime()*(velocidad*5));
+
+                        mesh4.rotation.x=(Math.cos(reloj.getElapsedTime()*(velocidad*5))*1);
+                        mesh5.rotation.x=(Math.cos(reloj.getElapsedTime()*(velocidad*5))*-1);
+                    }
+                    // cuando no se presiona nada
+                    else{
+                        piernaIzq.rotation.x = 0;
+                        piernaDer.rotation.x = 0;
+                        // desaceleración
+                        if(currentSpeed > 0){
+                            currentSpeed = Math.max(currentSpeed - desacelerar,0);
+                        }
+                        else if(currentSpeed < 0){
+                            currentSpeed = Math.min(currentSpeed + desacelerar,0);
+                        }
+                    }
+                    // movimiento físico
+                    gr1Body.velocity.set(
+                        forward.x * currentSpeed,
+                        gr1Body.velocity.y,
+                        forward.z * currentSpeed
+                    );
+                    // rotar izquierda
+                    if (keys['KeyA']){
+                        gr1Body.angularVelocity.y = rotar;
+                    }
+                    // rotar derecha
+                    else if (keys['KeyD']){
+                        gr1Body.angularVelocity.y = -rotar;
+                    }else{
+                        gr1Body.angularVelocity.y=0;
+                    }
+                    // bloquear rotaciones innecesarias
+                    gr1Body.angularVelocity.set(0, gr1Body.angularVelocity.y,0);
+                    gr1Body.quaternion.x=0;
+                    gr1Body.quaternion.z=0;
+                    // sincroniza rotaciones
+                    gr1.quaternion.x=gr1Body.quaternion.x; 
+                    gr1.quaternion.z=gr1Body.quaternion.z; 
+                }
+
+                //////// FISICAS AL GRÁFICO
+
+                function FisicasAlGrafico(){
+                    gr1.position.copy(gr1Body.position);
+                    gr1.quaternion.copy(gr1Body.quaternion);
+                }
+
+                /////arbol
+                const ar =Arbol({x:0,y:0,z:25});
+                ar.scale.set(3,3,3);
+                scene.add(ar);
+
+                const ar1 =Arbol({x:0,y:0,z:-15});
+                ar1.scale.set(3,3,3);
+                scene.add(ar1);
+
+                const ar2 =Arbol({x:0,y:0,z:-55});
+                ar2.scale.set(3,3,3);
+                scene.add(ar2);
+
+                const ar3 =Arbol({x:0,y:0,z:-95});
+                ar3.scale.set(3,3,3);
+                scene.add(ar3);
+
+                const ar4 =Arbol({x:0,y:0,z:-135});
+                ar4.scale.set(3,3,3);
+                scene.add(ar4);
+
+                const ar5 =Arbol({x:0,y:0,z:-175});
+                ar5.scale.set(3,3,3);
+                scene.add(ar5);
+
+                const ar6 =Arbol({x:0,y:0,z:-215});
+                ar6.scale.set(3,3,3);
+                scene.add(ar6);
+
+                const ar7 =Arbol({x:240,y:0,z:-270});
+                ar7.scale.set(3,3,3);
+                scene.add(ar7);
+
+                const ar8 =Arbol({x:-170,y:0,z:-270});
+                ar8.scale.set(3,3,3);
+                scene.add(ar8);
+
+                const ar9 =Arbol({x:210,y:0,z:-310});
+                ar9.scale.set(3,3,3);
+                scene.add(ar9);
+
+                const ar10 =Arbol({x:-170,y:0,z:70});
+                ar10.scale.set(3,3,3);
+                scene.add(ar10);
+
+                const ar11 =Arbol({x:240,y:0,z:70});
+                ar11.scale.set(3,3,3);
+                scene.add(ar11);
+
+                const ArbolGroup = new THREE.Group();
+                ArbolGroup.add(ar,ar1,ar2,ar3,ar4,ar5,ar6);
+                scene.add(ArbolGroup);
+                ArbolGroup.position.set(-170,0,0);
+
+                const ArbolGroup2 = ArbolGroup.clone();
+                ArbolGroup2.position.set(240,0,0);
+                scene.add(ArbolGroup2);
+
+                const ArbolGroup3 = ArbolGroup.clone();
+                ArbolGroup3.position.set(140,0,-310);
+                ArbolGroup3.rotation.y=1.57;
+                scene.add(ArbolGroup3);
+
+                // GRANERO
+                var granero = new Granero({ x: 31, y: -.5, z:-260});
+                granero.scale.set(3,3,3);
+                scene.add(granero);
+                
+                //FISICAS DEL GRANERO
+                const graneroShape = new CANNON.Box(new CANNON.Vec3(36, 10, 36));
+
+                const graneroBody = new CANNON.Body({
+                    mass: 0
+                });
+
+                graneroBody.addShape(graneroShape);
+                graneroBody.position.set(30, 10, -260);
+
+                world.addBody(graneroBody);
+
+                // POZO
+                var pozo = new Pozo({ x: 180, y: -2, z: 50 });
+                pozo.scale.set(2,2,2)
+                scene.add(pozo);
+
+                //FISICAS DEL POZO
+                const pozoShape = new CANNON.Cylinder(12, 12, 10, 16);
+
+                const pozoBody = new CANNON.Body({
+                    mass: 0
+                });
+
+                pozoBody.addShape(pozoShape);
+                pozoBody.position.set(180, 5, 50);
+                world.addBody(pozoBody);
+
+                // TRACTOR
+                var tractor = new Tractor({ x: -90, y:1, z: -100 });
+                tractor.scale.set(2,2,2);
+                tractor.rotation.y=1.57;
+                scene.add(tractor);
+
+                //LOGICA DE DAÑO DE TRACTOR
+                // movimiento base en eje X
+                var baseXTractor = tractor.position.x;
+                // límites del movimiento del tractor
+                var minX = -140;   // límite izquierdo 
+                var maxX = 40;    // límite derecho 
+
+                var velocidadTractor = .3;
+                var direccionTractor = 1;
+                // variables de pausa al llegar a un extremo
+                var esperando = false;
+                var tiempoInicioEspera = 0;
+                function movimientoTractor(){
+                    // si está esperando no se mueve
+                    if(esperando){
+                        if(reloj.getElapsedTime() - tiempoInicioEspera > 1.5){ // 1.5 segundos
+                            esperando = false;
+                            // cambia dirección
+                            direccionTractor *= -1;
+                        }
+                        return;
+                    }
+
+                    // movimiento en X
+                    tractor.position.x += velocidadTractor * direccionTractor;
+
+                    // límite derecho
+                    if(tractor.position.x >= maxX){
+                        tractor.position.x = maxX;
+                        esperando = true;
+                        tiempoInicioEspera = reloj.getElapsedTime();
+                    }
+                    // límite izquierdo
+                    if(tractor.position.x <= minX){
+                        tractor.position.x = minX;
+                        esperando = true;
+                        tiempoInicioEspera = reloj.getElapsedTime();
+                    }
+
+                    // rotación según la dirección en la que está
+                    if(direccionTractor > 0){
+                        tractor.rotation.y = 1.57;
+                    }else{
+                        tractor.rotation.y = -1.57;
+                    }
+                }
+                // daño del tractor
+                function dañoTractor(){
+
+                    const distancia = tractor.position.distanceTo(gr1Body.position);
+
+                    if(distancia < 30 && !gameOver){
+                        vida -= .2;
+                        if(vida <= 0){
+                            vida = 0;
+                            gameOver = true;
+
+                            document.getElementById("botonReiniciar").style.opacity = 1;
+                            document.getElementById("avisoo").textContent = "¡GAME OVER!";
+                        }
+                    }
+                }
+
+                // BOTE
+                var bote = new Bote({ x:-70, y: -1, z: 10 });
+                bote.scale.set(2,2,2)
+                scene.add(bote);
+
+                //FISICAS DEL BOTE
+                const boteShape = new CANNON.Box(new CANNON.Vec3(21, 8, 12));
+
+                const boteBody = new CANNON.Body({
+                    mass: 0
+                });
+
+                boteBody.addShape(boteShape);
+                boteBody.position.set(-70, 3, 10);
+
+                world.addBody(boteBody);
+
+                // GALLINAS DEL CORRAL
+                var gallina1 = new gallina({ x: 105, y: -2, z: -100 });
+                    gallina1.scale.set(2,2,2);
+                    gallina1.rotation.y = 0;
+                    scene.add(gallina1);
+
+                    var gallina2 = new gallina({ x: 120, y: -2, z: -120 });
+                    gallina2.scale.set(2,2,2);
+                    gallina2.rotation.y = Math.PI / 2;
+                    scene.add(gallina2);
+
+                    var gallina3 = new gallina({ x: 140, y: -2, z: 0 });
+                    gallina3.scale.set(2,2,2);
+                    gallina3.rotation.y = Math.PI;
+                    scene.add(gallina3);
+
+                    var gallina4 = new gallina({ x: 160, y: -2, z: -110 });
+                    gallina4.scale.set(2,2,2);
+                    gallina4.rotation.y = -Math.PI / 2;
+                    scene.add(gallina4);
+
+                    var gallina5 = new gallina({ x: 180, y: -2, z: -50 });
+                    gallina5.scale.set(2,2,2);
+                    gallina5.rotation.y = Math.PI / 3;
+                    scene.add(gallina5);
+
+                    var gallina6 = new gallina({ x: 130, y: -2, z: -60 });
+                    gallina6.scale.set(2,2,2);
+                    gallina6.rotation.y = -Math.PI / 3;
+                    scene.add(gallina6);
+
+                    var gallina7 = new gallina({ x: 150, y: -2, z: -20 });
+                    gallina7.scale.set(2,2,2);
+                    gallina7.rotation.y = Math.PI / 4;
+                    scene.add(gallina7);
+
+                    var gallina8 = new gallina({ x: 170, y: -2, z: -130 });
+                    gallina8.scale.set(2,2,2);
+                    gallina8.rotation.y = -Math.PI / 4;
+                    scene.add(gallina8);
+
+                    var gallina9 = new gallina({ x: 110, y: -2, z: -70 });
+                    gallina9.scale.set(2,2,2);
+                    gallina9.rotation.y = Math.PI * 0.75;
+                    scene.add(gallina9);
+
+                    var gallina10 = new gallina({ x: 190, y: -2, z: -50 });
+                    gallina10.scale.set(2,2,2);
+                    gallina10.rotation.y = -Math.PI * 0.75;
+                    scene.add(gallina10);
+
+
+                ////////////granja
+                var loader = new GLTFLoader();
+                    loader.load('./modelos/farm.glb', (gltf)=>{
+                    var model= gltf.scene;
+                    model.scale.set(12,12,12);
+                    model.position.set(-150,-40,60);
+                    model.rotation.set(0,-1.57,0);
+                    scene.add(gltf.scene);
+                });
+
+                ////// MUROS INVISIBLES DE GRANJA
+                //MURO DE ENFRENTE
+                const wallShape1 = new CANNON.Box(new CANNON.Vec3(200, 10, 1));
+
+                const wallBody1 = new CANNON.Body({
+                    mass: 0
+                });
+
+                wallBody1.addShape(wallShape1);
+                wallBody1.position.set(35, 10, -305);
+
+                world.addBody(wallBody1);
+                //MURO TRASERO
+                const wallShape2 = new CANNON.Box(new CANNON.Vec3(200, 10, 1));
+
+                const wallBody2 = new CANNON.Body({
+                    mass: 0
+                });
+
+                wallBody2.addShape(wallShape2);
+                wallBody2.position.set(35, 10, 90);
+
+                world.addBody(wallBody2);
+                //MURO IZQUIERDO
+                const wallShape3 = new CANNON.Box(new CANNON.Vec3(1, 10, 305));
+
+                const wallBody3 = new CANNON.Body({
+                    mass: 0
+                });
+
+                wallBody3.addShape(wallShape3);
+                wallBody3.position.set(-165, 10, 0);
+
+                world.addBody(wallBody3);
+                //MURO DERECHO
+                const wallShape4 = new CANNON.Box(new CANNON.Vec3(1, 10, 305));
+
+                const wallBody4 = new CANNON.Body({
+                    mass: 0
+                });
+
+                wallBody4.addShape(wallShape4);
+                wallBody4.position.set(235, 10, 0);
+
+                world.addBody(wallBody4);
+
+                //MUROS DE VALLAS
+                //VALLA 1
+                const wallShape5 = new CANNON.Box(new CANNON.Vec3(60, 10, 3));
+
+                const wallBody5 = new CANNON.Body({
+                    mass: 0
+                });
+
+                wallBody5.addShape(wallShape5);
+                wallBody5.position.set(145, 10, 12);
+
+                world.addBody(wallBody5);
+
+                //VALLA 2
+                const wallShape6 = new CANNON.Box(new CANNON.Vec3(60, 10, 3));
+
+                const wallBody6 = new CANNON.Body({
+                    mass: 0
+                });
+
+                wallBody6.addShape(wallShape6);
+                wallBody6.position.set(145, 10, -145);
+
+                world.addBody(wallBody6);
+
+                //VALLA 3
+                const wallShape7 = new CANNON.Box(new CANNON.Vec3(3, 10, 77));
+
+                const wallBody7 = new CANNON.Body({
+                    mass: 0
+                });
+
+                wallBody7.addShape(wallShape7);
+                wallBody7.position.set(205, 10, -70);
+
+                world.addBody(wallBody7);
+
+                //VALLA 4
+                const wallShape8 = new CANNON.Box(new CANNON.Vec3(3, 10, 77));
+
+                const wallBody8 = new CANNON.Body({
+                    mass: 0
+                });
+
+                wallBody8.addShape(wallShape8);
+                wallBody8.position.set(85, 10, -70);
+
+                world.addBody(wallBody8);
+
+                // pollitos (AQUI EMPIEZA LA PROGRAMACION DE LOS PUNTOS)
+                var Pollito1 = new POLLITO({ x:20, y:3, z:0 });
+                var Pollito2 = new POLLITO({ x:-30, y:3, z:10 });
+                var Pollito3 = new POLLITO({ x:10, y:3, z:-40 });
+                var Pollito4 = new POLLITO({ x:-80, y:3, z:-150 });
+                var Pollito5 = new POLLITO({ x:60, y:3, z:-200 });
+
+                scene.add(Pollito1, Pollito2, Pollito3,Pollito4, Pollito5);
+
+                //VARIABLES DE LAS COSAS JAJA
+                var puntos = 0;
+                var vida = 50;
+                var gameOver = false; 
+                var juegoIniciado = false;
+                var tiempoRestante=30;
+                const elemento_salud = document.getElementById('salud');
+                const elemento_tiempo=document.getElementById('tiempo');
+
+                //arreglo de pollitos
+                const elemento_puntos = document.getElementById('puntos');
+                const puntosData = [
+                    { mesh: Pollito1 },
+                    { mesh: Pollito2 },
+                    { mesh: Pollito3 },
+                    { mesh: Pollito4 },
+                    { mesh: Pollito5 }
+                ];
+                // posiciones posibles para reaparecer
+                const posiciones = [
+                    new THREE.Vector3(-140, 3, -260),
+                    new THREE.Vector3(-60, 3, -240),
+                    new THREE.Vector3(20, 3, -250),
+                    new THREE.Vector3(100, 3, -240),
+                    new THREE.Vector3(-130, 3, -180),
+                    new THREE.Vector3(-40, 3, -170),
+                    new THREE.Vector3(40, 3, -180),
+                    new THREE.Vector3(-140, 3, -80),
+                    new THREE.Vector3(-100, 3, -30),
+                    new THREE.Vector3(-140, 3, 30),
+                    new THREE.Vector3(-30, 3, -60),
+                    new THREE.Vector3(0, 3, 0),
+                    new THREE.Vector3(-20, 3, 40),
+                    new THREE.Vector3(60, 3, -200),
+                    new THREE.Vector3(80, 3, -150),
+                    new THREE.Vector3(-120, 3, 70),
+                    new THREE.Vector3(-40, 3, 60),
+                    new THREE.Vector3(40, 3, 70)
+                ];
+                // mueve el pollito a otra posición
+                function moverPollito(obj){
+                    let randomPosition;
+                    let distancia;
+
+                    do{
+                        const randomIndex = Math.floor(Math.random() * posiciones.length);
+                        randomPosition = posiciones[randomIndex];
+                        // evita aparecer encima del jugador
+                        distancia = randomPosition.distanceTo(gr1.position);
+
+                    }while(distancia < 10); // evita que spawneen encima del jugador
+
+                    obj.mesh.position.copy(randomPosition);
+                }
+
+                const radioDeteccion = 5
+                // detección de recolección
+                function updatePuntos(){
+                    puntosData.forEach(obj => {
+
+                        const distancia = obj.mesh.position.distanceTo(gr1Body.position);
+
+                        if(distancia < radioDeteccion){
+                            puntos++;
+                            moverPollito(obj);
+                            sonidopollo();
+                            console.log('si suena');
+                        }
+                        //console.log("distancia:", distancia);
+                    });
+                    
+                }
+
+                //MOVIMIENTO DE LOS POLLITOS
+                var baseZ1 = Pollito1.position.z;
+                var baseZ2 = Pollito2.position.z;
+                var baseZ3 = Pollito3.position.z;
+                var baseZ4 = Pollito4.position.z;
+                var baseZ5 = Pollito5.position.z;
+
+                function movimientoPollitos(){
+
+                    // POLLITO 1
+                    Pollito1.position.z = (Math.cos(reloj.getElapsedTime()*.5) * 10) + baseZ1;
+
+                    if(Math.cos(reloj.getElapsedTime()*2) > 0){
+                        Pollito1.rotation.y = 0;
+                    }else{
+                        Pollito1.rotation.y = Math.PI;
+                    }
+
+                    // POLLITO 2
+                    Pollito2.position.z = (Math.cos(reloj.getElapsedTime()*2 + 1) * 10) + baseZ2;
+
+                    if(Math.cos(reloj.getElapsedTime()*2 + 1) > 0){
+                        Pollito2.rotation.y = 0;
+                    }else{
+                        Pollito2.rotation.y = Math.PI;
+                    }
+
+                    // POLLITO 3
+                    Pollito3.position.z = (Math.cos(reloj.getElapsedTime()*2 + 2) * 10) + baseZ3;
+
+                    if(Math.cos(reloj.getElapsedTime()*2 + 2) > 0){
+                        Pollito3.rotation.y = 0;
+                    }else{
+                        Pollito3.rotation.y = Math.PI;
+                    }
+
+                    // POLLITO 4
+                    Pollito4.position.z = (Math.cos(reloj.getElapsedTime()*2 + 3) * 10) + baseZ4;
+
+                    if(Math.cos(reloj.getElapsedTime()*2 + 3) > 0){
+                        Pollito4.rotation.y = 0;
+                    }else{
+                        Pollito4.rotation.y = Math.PI;
+                    }
+
+                    // POLLITO 5
+                    Pollito5.position.z = (Math.cos(reloj.getElapsedTime()*2 + 4) * 10) + baseZ5;
+
+                    if(Math.cos(reloj.getElapsedTime()*2 + 4) > 0){
+                        Pollito5.rotation.y = 0;
+                    }else{
+                        Pollito5.rotation.y = Math.PI;
+                    }
+                }
+
+                //ENEMIGOS AQUII
+                //ZORRITO
+                var Zorrito1 = new ZORRITO({ x:-100, y:3, z:-200 });
+                var Zorrito2 = new ZORRITO({ x:80, y:3, z:-220 });
+                var Zorrito3 = new ZORRITO({ x:-50, y:3, z:50 });
+                
+                Zorrito1.scale.set(1.5,1.5,1.5);
+                Zorrito2.scale.set(1.5,1.5,1.5);
+                Zorrito3.scale.set(1.5,1.5,1.5);
+                scene.add(Zorrito1,Zorrito2,Zorrito3);
+
+                const enemobj = [Zorrito1, Zorrito2, Zorrito3];
+                const dañoData = [];
+
+                enemobj.forEach(obstadan => {
+
+                    const obstacleShape2 = new CANNON.Sphere(2);
+
+                    const obstacleBody2 = new CANNON.Body({ 
+                        mass: 0,
+                        type: CANNON.Body.KINEMATIC
+                    });
+                    obstacleBody2.collisionResponse = false;
+                    obstacleBody2.addShape(obstacleShape2);
+                    obstacleBody2.position.copy(obstadan.position);
+                    obstacleBody2.position.y += 2; // ajusta altura
+                    obstacleBody2.position.z += 1;
+
+                    world.addBody(obstacleBody2);
+
+                    dañoData.push({
+                        mesh: obstadan,
+                        body: obstacleBody2,
+                        state: "patrol",
+                        target: null,
+                        speed: 0.05,
+                        lastDecision: 0
+                    });
+                });
+
+                const radioenem = 6;
+
+                // TEMPORIZADOR
+                function actualizarTiempo(){
+
+                    if(juegoIniciado && !gameOver){
+
+                        tiempoRestante -= 1/60;
+
+                        if(tiempoRestante <= 0){
+
+                            tiempoRestante = 0;
+                            gameOver = true;
+
+                            document.getElementById("botonReiniciar").style.opacity = 1;
+                            document.getElementById("avisoo").textContent = "¡TIEMPO TERMINADO!";
+                        }
+                    }
+
+    elemento_tiempo.textContent = Math.ceil(tiempoRestante);
+}
+
+                function updateDanio(){
+
+                    dañoData.forEach(obj => {
+
+                        const enemPos = obj.mesh.position;
+                        const jugadorPos = gr1.position;
+
+                        const distancia = obj.body.position.distanceTo(gr1Body.position);
+
+                        // cambia a persecución
+                        if (distancia < 70){
+                            obj.state = "chase";
+                        } else if (distancia > 80){
+                            obj.state = "patrol";
+                        }
+
+                        // velocidad según su estado
+                        obj.speed = obj.state === "chase" ? 0.6 : 0.08;
+
+                        let direction = new THREE.Vector3();
+
+                        if (obj.state === "chase") {
+
+                            direction.subVectors(jugadorPos, enemPos);
+
+                            const lookTarget = new THREE.Vector3(
+                                jugadorPos.x,
+                                enemPos.y,
+                                jugadorPos.z
+                            );
+
+                            obj.mesh.lookAt(lookTarget);
+
+                        } else {
+                            // movimiento simple patrullando
+                            direction.x = Math.cos(reloj.getElapsedTime());
+                            direction.z = Math.sin(reloj.getElapsedTime());
+                        }
+
+                        direction.normalize();
+
+                        // MOVIMIENTO
+                        enemPos.x += direction.x * obj.speed;
+                        enemPos.z += direction.z * obj.speed;
+
+                        obj.body.position.copy(enemPos);
+
+                        // DAÑO
+                        if (distancia < radioenem && !gameOver){
+
+                            vida -= 1;
+
+                            enemPos.x -= direction.x * 7;
+                            enemPos.z -= direction.z * 7;
+
+                            if(vida <= 0){
+                                vida = 0;
+                                gameOver = true;
+
+                                document.getElementById("botonReiniciar").style.opacity = 1;
+                                document.getElementById("avisoo").textContent = "¡GAME OVER!";
+                            }
+                        }
+                    });
+
+                    // ACTUALIZAR VIDA EN UI
+                    elemento_salud.textContent = Math.floor(vida);  
+}
+
+                //Rendering y animación
+                    requestAnimationFrame(render);
+                    function render() {
+                        if(juegoIniciado && !gameOver){
+                            animate();
+                            movimientoPollitos();
+                            FisicasAlGrafico();
+                            updateDanio();
+                            updatePuntos();
+                            movimientoTractor();
+                            dañoTractor();
+                            actualizarTiempo();
+                        }
+
+                        elemento_puntos.textContent = puntos;
+                        world.step(1/60);
+                        //el que muestra la caja invisible
+                        //cannonDebug.update();
+
+                        camera.position.set(gr1.position.x,gr1.position.y + 20,gr1.position.z + 40);
+                        camera.lookAt(gr1.position.x,gr1.position.y + 5,gr1.position.z);
+                        //controls.update();
+
+                        renderer.render(scene, camera);
+                        requestAnimationFrame(render);
+                    }
+            </script>
+        </div>
+    </body>
+</html>
